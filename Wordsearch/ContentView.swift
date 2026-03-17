@@ -252,17 +252,20 @@ private struct PuzzleGridView: View {
                     Button {
                         onTap(point)
                     } label: {
-                        Text(String(puzzle.grid[row][column]))
-                            .font(.system(size: 18, weight: .black, design: .rounded))
-                            .foregroundStyle(foregroundColor(for: point))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 28)
-                            .background(cellBackground(for: point))
-                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                    .stroke(cellBorder(for: point), lineWidth: selectionStart == point ? 2.5 : 0)
-                            )
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(cellBackground(for: point))
+
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .stroke(cellBorder(for: point), lineWidth: selectionStart == point ? 2.5 : 0)
+
+                            Text(String(puzzle.grid[row][column]))
+                                .font(.system(size: 18, weight: .black, design: .rounded))
+                                .minimumScaleFactor(0.6)
+                                .foregroundStyle(foregroundColor(for: point))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(1, contentMode: .fit)
                     }
                     .buttonStyle(.plain)
                 }
