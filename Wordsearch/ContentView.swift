@@ -24,20 +24,44 @@ struct ContentView: View {
                 )
                 .ignoresSafeArea()
 
-                content
+                GeometryReader { proxy in
+                    content(for: proxy.size.width)
+                }
             }
             .navigationTitle("Atlas Search")
         }
     }
 
     @ViewBuilder
-    private var content: some View {
+    private func content(for availableWidth: CGFloat) -> some View {
         if let error = viewModel.loadingError {
             errorState(message: error)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let puzzle = viewModel.puzzle {
             ScrollView {
+                gameLayout(for: puzzle, availableWidth: availableWidth)
+                .frame(maxWidth: availableWidth >= 1100 ? 1480 : 920)
+                .padding(20)
+                .padding(.bottom, 24)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ProgressView("Building puzzle...")
+                .padding(24)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func gameLayout(for puzzle: GeographyPuzzle, availableWidth: CGFloat) -> some View {
+        if availableWidth >= 1100 {
+            HStack(alignment: .top, spacing: 20) {
+                selectionSidebar(for: puzzle, isWideLayout: true)
+                    .frame(width: 290)
+
                 VStack(alignment: .leading, spacing: 20) {
-                    headerCard(for: puzzle)
+                    boardSummaryCard(for: puzzle)
 
                     PuzzleGridView(
                         puzzle: puzzle,
@@ -45,67 +69,105 @@ struct ContentView: View {
                         selectionStart: viewModel.selectionStart,
                         onTap: viewModel.handleTap(on:)
                     )
-
-                    wordBankCard(for: puzzle)
                 }
-                .frame(maxWidth: 920)
-                .padding(20)
-                .padding(.bottom, 24)
+                .frame(maxWidth: 760)
+
+                remainingWordsSidebar(for: puzzle)
+                    .frame(width: 310)
             }
         } else {
-            ProgressView("Building puzzle...")
-                .padding(24)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            VStack(alignment: .leading, spacing: 20) {
+                selectionSidebar(for: puzzle, isWideLayout: false)
+
+                PuzzleGridView(
+                    puzzle: puzzle,
+                    foundCells: viewModel.foundCells,
+                    selectionStart: viewModel.selectionStart,
+                    onTap: viewModel.handleTap(on:)
+                )
+
+                remainingWordsSidebar(for: puzzle)
+            }
         }
     }
 
-    private func headerCard(for puzzle: GeographyPuzzle) -> some View {
+    private func selectionSidebar(for puzzle: GeographyPuzzle, isWideLayout: Bool) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 10) {
+                Text("Select Region")
+                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(red: 0.42, green: 0.31, blue: 0.17))
+
                 Text(puzzle.region.challengeTitle)
-                    .font(.system(size: 32, weight: .bold, design: .serif))
+                    .font(.system(size: isWideLayout ? 30 : 28, weight: .bold, design: .serif))
                     .foregroundStyle(Color(red: 0.10, green: 0.17, blue: 0.21))
 
-                Text("Only cross out \(puzzle.region.lowercasedName) cities. \(distractorLine(for: puzzle))")
+                Text("Only cross out \(puzzle.region.lowercasedName) cities. Use the grid to ignore decoys from other regions.")
                     .font(.system(size: 16, weight: .medium, design: .rounded))
                     .foregroundStyle(Color(red: 0.12, green: 0.26, blue: 0.33))
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: 12) {
-                Picker(
-                    "Target Region",
-                    selection: Binding(
-                        get: { viewModel.selectedRegion },
-                        set: { viewModel.changeRegion(to: $0) }
-                    )
-                ) {
-                    ForEach(GeographyRegion.allCases) { region in
-                        Text(region.rawValue).tag(region)
-                    }
-                }
-                .pickerStyle(.menu)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.78), in: Capsule())
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: 10),
+                    count: isWideLayout ? 1 : 2
+                ),
+                spacing: 10
+            ) {
+                ForEach(GeographyRegion.allCases) { region in
+                    Button {
+                        viewModel.changeRegion(to: region)
+                    } label: {
+                        HStack {
+                            Text(region.rawValue)
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
 
-                Button("New Puzzle") {
-                    viewModel.generatePuzzle()
+                            Spacer(minLength: 8)
+
+                            if viewModel.selectedRegion == region {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 15, weight: .bold))
+                            }
+                        }
+                        .foregroundStyle(viewModel.selectedRegion == region ? Color.white : Color(red: 0.12, green: 0.26, blue: 0.33))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(
+                                    viewModel.selectedRegion == region
+                                    ? Color(red: 0.16, green: 0.42, blue: 0.48)
+                                    : Color.white.opacity(0.72)
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.78, green: 0.36, blue: 0.20))
             }
 
-            HStack(spacing: 12) {
-                StatPill(
-                    label: "Correct",
-                    value: "\(viewModel.foundCount)/\(viewModel.targetCount)"
-                )
+            Button("New Puzzle") {
+                viewModel.generatePuzzle()
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Color(red: 0.78, green: 0.36, blue: 0.20))
 
-                StatPill(
-                    label: "Remaining",
-                    value: "\(viewModel.remainingCount)"
-                )
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Progress")
+                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(red: 0.42, green: 0.31, blue: 0.17))
+
+                HStack(spacing: 12) {
+                    StatPill(
+                        label: "Correct",
+                        value: "\(viewModel.foundCount)/\(viewModel.targetCount)"
+                    )
+
+                    StatPill(
+                        label: "Remaining",
+                        value: "\(viewModel.remainingCount)"
+                    )
+                }
             }
 
             Text(viewModel.feedback)
@@ -130,25 +192,82 @@ struct ContentView: View {
         .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: 10)
     }
 
-    private func wordBankCard(for puzzle: GeographyPuzzle) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Mixed City Bank")
-                .font(.system(size: 26, weight: .bold, design: .serif))
-                .foregroundStyle(Color(red: 0.10, green: 0.17, blue: 0.21))
+    private func boardSummaryCard(for puzzle: GeographyPuzzle) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Current Challenge")
+                .font(.system(size: 14, weight: .black, design: .rounded))
+                .foregroundStyle(Color(red: 0.89, green: 0.76, blue: 0.55))
 
-            Text("Every city below is hidden in the grid. Cross out only the ones that belong to \(puzzle.region.rawValue).")
-                .font(.system(size: 15, weight: .medium, design: .rounded))
-                .foregroundStyle(Color(red: 0.12, green: 0.26, blue: 0.33))
+            Text(distractorLine(for: puzzle))
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.white.opacity(0.92))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(Color(red: 0.14, green: 0.25, blue: 0.31).opacity(0.92))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.14), radius: 18, x: 0, y: 8)
+    }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 148), spacing: 12)], spacing: 12) {
-                ForEach(puzzle.wordBank) { city in
-                    CityChip(
-                        city: city,
-                        isFoundTarget: viewModel.isFoundTarget(city),
-                        isRevealedDistractor: viewModel.isRevealedDistractor(city)
-                    )
+    private func remainingWordsSidebar(for puzzle: GeographyPuzzle) -> some View {
+        let remainingCities = remainingTargetCities(for: puzzle)
+        let foundCities = foundTargetCities(for: puzzle)
+
+        return VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Remaining Words")
+                    .font(.system(size: 28, weight: .bold, design: .serif))
+                    .foregroundStyle(Color(red: 0.10, green: 0.17, blue: 0.21))
+
+                Text("\(remainingCities.count) target cities still need to be crossed out.")
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color(red: 0.12, green: 0.26, blue: 0.33))
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                if remainingCities.isEmpty {
+                    Text("All target cities found.")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color(red: 0.22, green: 0.48, blue: 0.18))
+                } else {
+                    ForEach(remainingCities) { city in
+                        WordStatusRow(city: city, isFound: false)
+                    }
                 }
             }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Crossed Out")
+                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(red: 0.42, green: 0.31, blue: 0.17))
+
+                if foundCities.isEmpty {
+                    Text("Nothing crossed out yet.")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color(red: 0.39, green: 0.44, blue: 0.47))
+                } else {
+                    ForEach(foundCities) { city in
+                        WordStatusRow(city: city, isFound: true)
+                    }
+                }
+            }
+
+            Text("Decoy cities from \(puzzle.distractorRegions.map(\.rawValue).formatted(.list(type: .and))) are hidden in the grid too.")
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color(red: 0.63, green: 0.32, blue: 0.08))
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(red: 0.99, green: 0.91, blue: 0.80))
+                )
         }
         .padding(24)
         .background(
@@ -189,6 +308,22 @@ struct ContentView: View {
         }
 
         return "Distractors from \(regions.formatted(.list(type: .and))) are mixed in to slow the player down."
+    }
+
+    private func remainingTargetCities(for puzzle: GeographyPuzzle) -> [CityEntry] {
+        puzzle.targetCities
+            .filter { !viewModel.isFoundTarget($0) }
+            .sorted {
+                $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+            }
+    }
+
+    private func foundTargetCities(for puzzle: GeographyPuzzle) -> [CityEntry] {
+        puzzle.targetCities
+            .filter { viewModel.isFoundTarget($0) }
+            .sorted {
+                $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+            }
     }
 }
 
@@ -309,27 +444,26 @@ private struct PuzzleGridView: View {
     }
 }
 
-private struct CityChip: View {
+private struct WordStatusRow: View {
     let city: CityEntry
-    let isFoundTarget: Bool
-    let isRevealedDistractor: Bool
+    let isFound: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(isFound ? Color(red: 0.57, green: 0.78, blue: 0.47) : Color(red: 0.16, green: 0.42, blue: 0.48))
+                .frame(width: 10, height: 10)
+
             Text(city.displayName)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                .strikethrough(isFoundTarget)
+                .strikethrough(isFound)
                 .foregroundStyle(foreground)
 
-            if isRevealedDistractor {
-                Text(city.region.rawValue)
-                    .font(.system(size: 11, weight: .black, design: .rounded))
-                    .foregroundStyle(Color(red: 0.73, green: 0.39, blue: 0.09))
-            } else if isFoundTarget {
-                Text("Correct")
-                    .font(.system(size: 11, weight: .black, design: .rounded))
-                    .foregroundStyle(Color(red: 0.22, green: 0.48, blue: 0.18))
-            }
+            Spacer(minLength: 8)
+
+            Text(isFound ? "Found" : "To Find")
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .foregroundStyle(isFound ? Color(red: 0.22, green: 0.48, blue: 0.18) : Color(red: 0.16, green: 0.42, blue: 0.48))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
@@ -343,36 +477,24 @@ private struct CityChip: View {
     }
 
     private var background: some ShapeStyle {
-        if isFoundTarget {
+        if isFound {
             return Color(red: 0.86, green: 0.95, blue: 0.84)
-        }
-
-        if isRevealedDistractor {
-            return Color(red: 0.99, green: 0.91, blue: 0.80)
         }
 
         return Color.white.opacity(0.80)
     }
 
     private var foreground: Color {
-        if isFoundTarget {
+        if isFound {
             return Color(red: 0.22, green: 0.48, blue: 0.18)
-        }
-
-        if isRevealedDistractor {
-            return Color(red: 0.63, green: 0.32, blue: 0.08)
         }
 
         return Color(red: 0.10, green: 0.17, blue: 0.21)
     }
 
     private var borderColor: Color {
-        if isFoundTarget {
+        if isFound {
             return Color(red: 0.57, green: 0.78, blue: 0.47)
-        }
-
-        if isRevealedDistractor {
-            return Color(red: 0.89, green: 0.67, blue: 0.39)
         }
 
         return Color.white.opacity(0.30)
